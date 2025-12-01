@@ -1,27 +1,62 @@
-# folders
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Logs and outputs
 logs/
 csv_logs/
 exploration_logs/
+wandb/
+*.log
 
-# file extensions
+# Checkpoints and model weights
+out*/
+model_weights/
+*.pt
+*.pth
+*.ckpt
 *.pkl
 *.bin
-*.txt
 
-# audio file extensions
+# PCA factorization results
+*.npy
+*.npz
+
+# Data files
+*.txt
+*.csv
+data/*/train.bin
+data/*/val.bin
+
+# Audio files
 *.wav
 *.mp3
 
-# checkpoint directories
-out*/
-.aider*
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# experiment directories
+# OS
+.DS_Store
+Thumbs.db
+
+# Experiment directories
 experiments/
 nsga_exps/
+.aider*
 
-# nsga search directories
+# NSGA search directories
 optimization_and_search/host_configs/
 optimization_and_search/nsga_search/ckpts/
 optimization_and_search/nsga_search/train/
@@ -32,5 +67,3 @@ optimization_and_search/nsga_search/visualization/
 optimization_and_search/nsga_search/tests/
 optimization_and_search/nsga_search/utils/
 optimization_and_search/nsga_search/*.bash
-
-venv/*
