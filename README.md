@@ -1,260 +1,257 @@
-# ReaLLMASIC
+# PCA-Based Token Embedding Compression for GPT Models
+
+This repository implements a comprehensive experimental framework for analyzing the effectiveness of low-rank factorization of token embeddings in GPT models using Principal Component Analysis (PCA).
 
 ## Overview
 
-ReaLLMAsic aims to bridge the gap between theoretical model design and practical
-hardware implementation, ensuring efficient, scalable, and robust ML model
-development.
+This project explores whether token embeddings in GPT models can be compressed using PCA/SVD-based low-rank factorization without significant performance degradation. We compare four different training strategies to understand:
 
-Our project stands out for its extensive exploration of various model
-configurations and modules, catering to a diverse range of use cases.
+1. **PCA initialization effectiveness**: Does initializing with PCA-compressed embeddings help?
+2. **Dimensionality reduction cost**: How much performance is lost when reducing embedding dimensions?
+3. **Fine-tuning efficiency**: Can we preserve baseline knowledge while using compressed embeddings?
 
-Key exploration features include:
+## Key Features
 
-* `Module Variation`: Explore with different module types -- e.g. Softmax, Softermax, ConSmax, and SigSoftmax -- discover which is best suited (PPA) to your application.
-* `Flexible Tokenization`: Explore different tokenization: tiktoken, sentencepiece, phonemization, character level, custom tokenization, etc.
-* `Diverse Dataset Performance Testing`: Evaluate model efficacy across various languages and datasets including: csv-timeseries, mathematics, music, lyrics, literature, and webtext.
-* `Standard and Custom Hyperparameters`: Fine-tune models using conventional hyperparameters and explore the impact of custom settings on model performance and PPA impacts.
+- **PCA/SVD-based factorization**: Extract and factorize token embeddings from trained models
+- **Multiple training strategies**: Compare scratch training vs fine-tuning with compressed embeddings
+- **Automatic experiment pipeline**: Run all experiments with a single command
+- **Comprehensive logging**: Track experiments with W&B and TensorBoard
 
-Key analysis features:
+## Experimental Setup
 
-* `Exploration scripts`: Are encapsulated into bash scripts which loop over the train.py's argparse parameters.
-* `Logging with automatic timestamps & labels`: run a suite of experiments and have the repo automatically organize and label them by timestamp and description
+### Four Comparison Models
 
-Hardware Related
-* `Training with Hardware Emulation`: Implement different operations for forward and backward passes for hardware-implementation aware training.
-* `PPA Implications Analysis`: Understand the power, performance, and area (PPA) implications of different model designs, guiding efficient hardware-software integration.
+| Model | Embedding | Dim | Transformer | Training | Purpose |
+|------|-----------|-----|-------------|----------|---------|
+| **D. Baseline** | Random init | 768 | Random init | Full training | Upper bound |
+| **A. PCA-Scratch** | PCA init | 128 | Random init | Full training | PCA initialization effect |
+| **B. PCA-Finetune** | PCA init | 128 | Baseline weights | Fine-tune | Efficient compression |
+| **C. Random-Scratch** | Random init | 128 | Random init | Full training | Control group |
 
+### Research Questions
 
-# TOC
-
-* [Overview](#overview)
-* [Installation](#installation)
-  * [Step 1 (Recommended) Adding a Virtual Env](#step-1-recommended-adding-a-virtual-env)
-  * [Step 2 Install Dependencies](#step-2-install-dependencies)
-* [Testing Your Setup](#testing-your-setup)
-  * [Prepare Training and Validation Data Sets](#prepare-training-and-validation-data-sets)
-  * [Train Model From Scratch](#train-model-from-scratch)
-  * [Perform Inference From Custom Model](#perform-inference-from-custom-model)
-* [Explorations](#explorations)
-  * [Start Exploration](#start-exploration)
-  * [Inspect and Monitor Best Val Losses](#inspect-and-monitor-best-val-losses)
-  * [Start Tensorboard Logging](#start-tensorboard-logging)
-  * [Model Stats Table](#model-stats-table)
-  * [Troubleshooting](#troubleshooting)
-  * [Creating New Features and Exploration Scripts](#creating-new-features-and-exploration-scripts)
-* [Contributing](#contributing)
-* [Acknowledgements](#acknowledgements)
+- **A vs C**: Does PCA initialization provide benefits over random initialization at the same dimension?
+- **A vs D**: What is the cost of dimensionality reduction (128d vs 768d)?
+- **B vs A**: Is fine-tuning more efficient than training from scratch?
+- **B vs D**: Can compressed embeddings + fine-tuning achieve baseline performance?
 
 ## Installation
 
-This section contains installation locally with GPU acceleration.
-
-(If you do not have a GPU, check out this [colab](./colabs/NanoGPT_Quickstart.ipynb), which has a T4 GPU
-runtime (at time of writing) for ML acceleration.)
-
-### Step 1 (Recommended) Adding a Virtual Env
-
-We recommend creating a virtual env or conda environment before starting:
-
-For venv:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-Or for conda:
-```bash
-conda create -n nanogpt
-conda activate nanogpt
-```
-
-### Step 2 Install Dependencies
-
-If you are compatible with cu11.8, then use the following:
+### Prerequisites
 
 ```bash
-python3 -m pip install --upgrade pip
-python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-python3 -m pip install numpy transformers datasets tiktoken wandb tqdm tensorboard rich torchinfo
+# Python 3.10+
+# CUDA-compatible GPU (recommended)
+
+# Install dependencies
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install numpy transformers datasets tiktoken wandb tqdm tensorboard rich
 ```
 
-If unsure, visit the pytorch page and subtitute the appropriate line for the `torch` installation line above: https://pytorch.org/get-started/locally/
+### Dataset Setup
 
-## Testing Your Setup
-
-### Prepare Training and Validation Data Sets
-
-This downloads and parses a literature dataset into `train.bin` and `val.bin` files.
+This project uses WikiText-103 dataset. Ensure the dataset is prepared:
 
 ```bash
-bash data/shakespeare_char/get_dataset.sh
+# Dataset should be located at:
+/home/ghlee/nanoGPT/data/wikitext103/
+# With files: train.bin, val.bin, meta.pkl
 ```
-### Train Model From Scratch
 
-Training with a GPU is highly recommended, to do this now run (should take
-around 3-20 minutes depending on one's GPU):
+## Quick Start
+
+### Run All Experiments
 
 ```bash
-python3 train.py --compile
+# Run all 4 experiments with rank k=128
+bash scripts/run_all_experiments.sh 128
 ```
 
-Highly recommend setting `--max_sample_tokens` which generates and shows outputs
-at each new saved checkpoint.
+### Individual Experiments
 
 ```bash
-python3 train.py --max_sample_tokens 100 --compile
+# 1. Train baseline model (768d)
+bash scripts/train_baseline_gpt2.sh
+
+# 2. Perform PCA factorization
+bash scripts/run_pca_factorization.sh
+
+# 3. Train PCA-Scratch model (A)
+bash scripts/train_pca_compressed.sh 128
+
+# 4. Train PCA-Finetune model (B)
+bash scripts/train_pca_finetune.sh 128
+
+# 5. Train Random-Scratch model (C)
+CUDA_VISIBLE_DEVICES=1 bash scripts/train_random_lowrank.sh 128
 ```
 
-### Perform Inference From Custom Model
+## Project Structure
 
-minutes and the best validation loss is 1.4697. Based on the configuration, the
-model checkpoints are being written into the `--out_dir` directory, that
-defaults to `./out`. So once the training finishes we can sample from the
-best model by pointing the sampling script at this directory:
+### Core Files
 
+- **`model.py`**: GPT model implementation with factorized embedding support
+  - Conditional `scale_up`/`scale_down` layers when `n_embd_wte` is set
+  - Weight tying between `wte` and `lm_head` for factorized embeddings
+  
+- **`train.py`**: Training script with PCA embedding support
+  - Fixed `ln_f_cosine` calculation for factorized embeddings (see Changes section)
+  - Support for importing PCA-factorized embeddings and scale matrices
+
+- **`util_factorization/pca_factorize_wte.py`**: PCA factorization script
+  - Extracts token embeddings from checkpoints
+  - Performs SVD-based low-rank factorization
+  - Saves factorized matrices for model initialization
+
+### Scripts
+
+- **`scripts/train_baseline_gpt2.sh`**: Train full baseline model (D)
+- **`scripts/run_pca_factorization.sh`**: Extract and factorize embeddings
+- **`scripts/train_pca_compressed.sh`**: Train with PCA init from scratch (A)
+- **`scripts/train_pca_finetune.sh`**: Fine-tune baseline with PCA embeddings (B)
+- **`scripts/train_random_lowrank.sh`**: Train with random low-rank init (C)
+- **`scripts/run_all_experiments.sh`**: Run all experiments automatically
+
+## Key Changes and Additions
+
+### 1. Factorized Embedding Support in `model.py`
+
+**Conditional Architecture**:
+- When `n_embd_wte` is set, the model uses:
+  - Small embedding: `wte [vocab_size, n_embd_wte]` (e.g., [50257, 128])
+  - Scale-up layer: `scale_up [n_embd_wte, n_embd]` (e.g., [128, 768])
+  - Scale-down layer: `scale_down [n_embd_wte, n_embd]` (e.g., [128, 768])
+  - LM head: `lm_head [n_embd_wte, vocab_size]` (e.g., [128, 50257])
+
+**Forward Pass**:
+```python
+# Input: tokens
+tok_emb = wte(tokens)              # [batch, seq, 128]
+tok_emb = scale_up(tok_emb)        # [batch, seq, 768]
+# ... transformer blocks (768d) ...
+x = scale_down(x)                  # [batch, seq, 128]
+logits = lm_head(x)                # [batch, seq, vocab_size]
+```
+
+### 2. PCA Factorization Script (`util_factorization/pca_factorize_wte.py`)
+
+**Functionality**:
+- Loads token embedding from trained checkpoint
+- Performs SVD: `W [V, d] ≈ U_k @ diag(S_k) @ Vh_k`
+- Saves:
+  - `wte_pca_k{k}.npy`: Factorized embedding `[V, k]`
+  - `scale_mats_pca_k{k}.npz`: Scale matrices `[k, d]`
+
+**Usage**:
 ```bash
-python3 sample.py
+python util_factorization/pca_factorize_wte.py \
+    --ckpt_path model_weights/gpt_baseline/ckpt.pt \
+    --rank_k 128 \
+    --out_wte_npy model_weights/pca_factorized/wte_pca_k128.npy \
+    --out_scale_npz model_weights/pca_factorized/scale_mats_pca_k128.npz
 ```
 
-This generates a few samples, for example:
+### 3. Fixed `ln_f_cosine` Calculation in `train.py`
+
+**Issue**: When `n_embd_wte` is set, `ln_f` outputs `[768]` but `lm_head.weight` is `[128]`, causing dimension mismatch.
+
+**Solution**: Apply `scale_down` transformation to match the actual forward pass:
+
+```python
+# Before (error):
+cos = F.cosine_similarity(ln_f_out[0], target_vecs, dim=-1)
+#                         [768]        [128]      ❌ Dimension mismatch
+
+# After (fixed):
+if self.args.n_embd_wte is not None:
+    ln_f_scaled = F.linear(ln_f_out[0], self.model.transformer.scale_down.weight.t())
+    #            [768] → [128] via scale_down
+    cos = F.cosine_similarity(ln_f_scaled, target_vecs, dim=-1)
+    #                         [128]        [128]      ✅ OK
+```
+
+**Location**: `train.py` lines ~1004-1021 and ~1136-1153
+
+### 4. CLI Arguments
+
+**New arguments in `train_args.py`**:
+- `--n_embd_wte`: Factorized embedding dimension
+- `--n_embd_wte_scale_tying`: Weight tying between scale_up and scale_down
+- `--import_wte_npy`: Path to factorized embedding `.npy` file
+- `--import_scale_matrices_npz`: Path to scale matrices `.npz` file
+- `--import_wte_freeze`: Freeze imported embedding
+- `--import_scale_matrices_freeze`: Freeze imported scale matrices
+
+## Parameter Comparison
+
+| Model | Embedding Params | Compression Ratio |
+|-------|------------------|-------------------|
+| Baseline (768d) | 38.6M | 1.0x |
+| PCA k=384 | 19.9M | 1.9x |
+| PCA k=256 | 13.3M | 2.9x |
+| PCA k=128 | 6.6M | **5.8x** |
+| PCA k=64 | 3.3M | **11.7x** |
+
+## Results and Analysis
+
+### Expected Outcomes
+
+- **A > C**: PCA initialization provides better starting point than random
+- **A ≈ D**: 128d is sufficient, 768d has redundancy
+- **B ≈ D**: Fine-tuning with compressed embeddings can match baseline
+- **B < A**: Fine-tuning is more efficient than scratch training
+
+### Monitoring
+
+- **W&B Dashboard**: Project `new-small-gpt`
+  - Runs: `gpt-baseline`, `gpt-pca-k128`, `gpt-pca-finetune-k128`, `gpt-random-lowrank-k128`
+- **Metrics**: Validation loss, perplexity, `ln_f_cosine`, training time
+
+## Output Structure
 
 ```
-ANGELO:
-And cowards it be strawn to my bed,
-And thrust the gates of my threats,
-Because he that ale away, and hang'd
-An one with him.
-
-DUKE VINCENTIO:
-I thank your eyes against it.
+model_weights/
+├── gpt_baseline/              # D. Baseline model
+├── pca_factorized/            # PCA factorization results
+│   ├── wte_pca_k64.npy
+│   ├── wte_pca_k128.npy
+│   ├── wte_pca_k256.npy
+│   └── scale_mats_pca_k*.npz
+├── gpt_pca_k128/              # A. PCA-Scratch
+├── gpt_pca_finetune_k128/     # B. PCA-Finetune
+└── gpt_random_lowrank_k128/   # C. Random-Scratch
 ```
 
-This looks pretty good for a model which just learned how to spell from scratch.
-Keeping an eye on inference is very important, however, usually one can infer
-levels from validation losses.
+## Troubleshooting
 
-The next section goes over how to do a massive _exploration_ of different models
-and quickly compare their quality using the `validation loss` as a proxy.
+### "Checkpoint not found"
+Ensure baseline training is complete before running PCA factorization.
 
-## Explorations
+### "Shape mismatch"
+Verify `n_embd_wte` matches the rank used in PCA factorization.
 
-The explorations directory is intended to be have a set of fully encapsulated
-replicable sweeps.
+### "CUDA out of memory"
+Reduce `batch_size` or `block_size` in training scripts.
 
-Using these, one can quickly and visually compare ultimate quality of
-checkpoints created from training using `validation loss` as a figure of merit.
-
-### Start Exploration
-
-To run the experiment create or modify an existing json file in the `explorations` folder:
-
+### GPU Selection
+Use `CUDA_VISIBLE_DEVICES=1` to select specific GPU:
 ```bash
-python3 optimization_and_search/run_experiments.py -c explorations/config.json
+CUDA_VISIBLE_DEVICES=1 bash scripts/train_random_lowrank.sh 128
 ```
-
-This will create logs in the following directories:
-
-```
-csv_logs/
-logs/
-```
-
-This also saves timestamped and labelled folders within the `output_dir` (which
-defaults to `out/` subdirectories)
-
-### Inspect and Monitor Best Val Losses
-
-Often for large explorations with `run_experiments` one wants to monitor the
-the best validation losses so far (a metric for how well the model does on next
-token prediction on the current dataset).
-
-The included `inspect_ckpts.py` script reports the best valiation loss and
-associated iteration number for all ckpt.pt files recursivel for a specified
-parent directory.
-
-Example usage:
-```bash
-python3 checkpoint_analysis/inspect_ckpts.py --directory ./out --sort loss
-```
-
-![image](./documentation/images/inspect_ckpts.png)
-
-This can be wrapped with color via the watch command for a realtime dashboard.
-
-For example to look at all checkpoint files in the out directory:
-```bash
-watch --color 'python3 checkpoint_analysis/inspect_ckpts.py --directory ./out --sort loss'
-```
-
-As with remainder of the repo, this script is provided as a base to open up for
-additional community contributions.
-
-### Start Tensorboard Logging
-
-If using tensorboard for logging, we have provided a convenience script:
-
-```bash
-source ./logging/start_tensorboard.sh
-```
-
-You can view live validation loss updates on url: [http://localhost:6006](http://localhost:6006)
-
-Note: Only one tensorboard process can grab port 6006 at time, if you want to
-run a second tensorboard, use the script and specify a different port e.g. 6007:
-
-```bash
-source ./logging/start_tensorboard.sh 6007
-```
-
-## Model Stats Table
-
-The training script can output a per‑tensor statistics table to a CSV file with
-``--print_model_stats_table``. A helper script then visualizes the table or
-compares two runs with colour‑coded deltas.
-
-```bash
-python3 train.py --print_model_stats_table run1_stats.csv
-python3 train.py --optimizer adamw --print_model_stats_table run2_stats.csv
-python3 view_model_stats.py run1_stats.csv run2_stats.csv
-```
-
-See [documentation/Model_Stats_Table.md](documentation/Model_Stats_Table.md)
-for more details.
-
-## TODO Section:
-
-TODO: Add links and descriptions to other Readme's and Demos.
-
-## Normalization Options
-
-The training CLI now supports `--use_peri_ln` for experimenting with
-*Peri-LN*, a normalization strategy that applies layer normalization
-around each sublayer (before and after). This can be combined with the
-existing `--use_post_ln` flag for Post-LN training.
-
-## Contributing
-
-This repo is under active development and accepting PR's, please see the
-
-See the [Contributing_Features.md](Contributing_Features.md) for details on how
-to add new features and explorations.
 
 ## Citation
 
-This work extends Andrej Karpathy's foundational
-[nanoGPT](https://github.com/karpathy/nanoGPT), for which prior citation format can be found [here](
-https://github.com/karpathy/nanoGPT/issues/471).
-
-We ask that citations cite both projects.
-
-To cite **ReaLLM-Forge**, please use this BibTeX entry:
+If you use this code in your research, please cite:
 
 ```bibtex
-@software{ReaLLM-Forge,
-  author = {{ReaLLMASIC} and {Contributors}},
-  title = {{ReaLLM-Forge: A Framework for Hardware-Aware LLM Exploration}},
-  url = {https://github.com/ReaLLMASIC/ReaLLM-Forge},
+@software{PCAEmbeddingCompression,
+  author = {Your Name},
+  title = {PCA-Based Token Embedding Compression for GPT Models},
   year = {2025},
+  url = {https://github.com/your-repo}
 }
 ```
+
+## License
+
+[Add your license information here]

@@ -1,7 +1,0 @@
-hf_token.py
-
-*.onnx
-*.txt
-*.png
-
-siglip_torchviz

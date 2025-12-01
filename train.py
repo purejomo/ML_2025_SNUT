@@ -447,7 +447,7 @@ class Trainer:
         # Wandb
         if self.args.wandb_log and self.master_process:
             import wandb
-            self.args.csv_name = wandb_run_name
+            self.args.csv_name = self.args.wandb_run_name
             wandb.init(project=self.args.wandb_project, name=self.args.wandb_run_name, config=self.args)
         self.load_tokenizer()
 
@@ -1001,15 +1001,31 @@ class Trainer:
                             left_prob = (probs * (probs > target_prob.unsqueeze(-1))).sum(dim=-1).float()
                             target_left_probs.append(left_prob)
                             left_inclusive_probs.append(left_prob + target_prob)
+                            # ====================================================================
+                            # FIX: ln_f_cosine calculation for factorized embeddings (n_embd_wte)
+                            # ====================================================================
+                            # Issue: When n_embd_wte is set, ln_f outputs [768] but lm_head expects [128]
+                            #        This causes dimension mismatch in cosine_similarity calculation.
+                            # Solution: Apply scale_down transformation to match the actual forward pass:
+                            #          ln_f [768] → scale_down → [128] → lm_head [128]
+                            # ====================================================================
                             lm_head = (
                                 self.model.transformer[f'lm_head_{idx}']
                                 if self.args.multidataset_wte
                                 else self.model.lm_head
                             )
                             target_vecs = lm_head.weight[Y]
-                            cos = F.cosine_similarity(
-                                ln_f_out[0].float(), target_vecs.float(), dim=-1
-                            )
+                            if self.args.n_embd_wte is not None:
+                                # Apply scale_down to match dimensions (same as forward pass)
+                                ln_f_scaled = F.linear(ln_f_out[0], self.model.transformer.scale_down.weight.t())
+                                cos = F.cosine_similarity(
+                                    ln_f_scaled.float(), target_vecs.float(), dim=-1
+                                )
+                            else:
+                                # Standard case: dimensions already match
+                                cos = F.cosine_similarity(
+                                    ln_f_out[0].float(), target_vecs.float(), dim=-1
+                                )
                             ln_f_cosines.append(cos)
                 out['datasets'][dataset] = {
                         'train': dataset_losses['train'].mean(),
@@ -1117,15 +1133,31 @@ class Trainer:
                         left_prob = (probs * (probs > target_prob.unsqueeze(-1))).sum(dim=-1).float()
                         target_left_probs.append(left_prob)
                         left_inclusive_probs.append(left_prob + target_prob)
+                        # ====================================================================
+                        # FIX: ln_f_cosine calculation for factorized embeddings (n_embd_wte)
+                        # ====================================================================
+                        # Issue: When n_embd_wte is set, ln_f outputs [768] but lm_head expects [128]
+                        #        This causes dimension mismatch in cosine_similarity calculation.
+                        # Solution: Apply scale_down transformation to match the actual forward pass:
+                        #          ln_f [768] → scale_down → [128] → lm_head [128]
+                        # ====================================================================
                         lm_head = (
                             self.model.transformer['lm_head_0']
                             if self.args.multidataset_wte
                             else self.model.lm_head
                         )
                         target_vecs = lm_head.weight[Y]
-                        cos = F.cosine_similarity(
-                            ln_f_out[0].float(), target_vecs.float(), dim=-1
-                        )
+                        if self.args.n_embd_wte is not None:
+                            # Apply scale_down to match dimensions (same as forward pass)
+                            ln_f_scaled = F.linear(ln_f_out[0], self.model.transformer.scale_down.weight.t())
+                            cos = F.cosine_similarity(
+                                ln_f_scaled.float(), target_vecs.float(), dim=-1
+                            )
+                        else:
+                            # Standard case: dimensions already match
+                            cos = F.cosine_similarity(
+                                ln_f_out[0].float(), target_vecs.float(), dim=-1
+                            )
                         ln_f_cosines.append(cos)
                 out[split] = losses.mean()
                 out[split + "_std"] = losses.std()
