@@ -79,6 +79,11 @@ from torch.utils.tensorboard import SummaryWriter
 from variations.model_variations import model_variation_dictionary
 
 from model import GPT, GPTConfig
+# ==============================================================================
+# [ADDED FOR PCA PROJECT] Import LoRA functions
+# ==============================================================================
+from model import apply_lora_to_model, get_lora_state_dict, load_lora_state_dict
+# ==============================================================================
 
 # Inference related imports
 import tiktoken
@@ -383,6 +388,40 @@ class Trainer:
             self.scaler = torch.amp.GradScaler(self.device_type, enabled=(self.args.dtype == 'float16'))
             self.scheduler = self.create_scheduler()
 
+        # ==============================================================================
+        # [ADDED FOR PCA PROJECT] Apply LoRA if enabled
+        # ==============================================================================
+        self.lora_params = None
+        self.lora_modules = None
+        if self.args.use_lora:
+            print("\n" + "="*60)
+            print("[PCA PROJECT] Applying LoRA to model...")
+            print("="*60)
+            
+            # Apply LoRA to model
+            self.model, self.lora_params, self.lora_modules = apply_lora_to_model(
+                self.model, self.args
+            )
+            
+            # Freeze all non-LoRA parameters
+            for name, param in self.model.named_parameters():
+                if 'lora_A' not in name and 'lora_B' not in name:
+                    param.requires_grad = False
+            
+            # Count trainable parameters
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            total_params = sum(p.numel() for p in self.model.parameters())
+            print(f"[LoRA] Trainable parameters: {trainable_params:,} / {total_params:,} ({100*trainable_params/total_params:.2f}%)")
+            
+            # Recreate optimizer with only LoRA parameters
+            self.optimizer = self.create_optimizer()
+            self.scheduler = self.create_scheduler()
+            
+            print("="*60 + "\n")
+        # ==============================================================================
+        # [END OF ADDED CODE FOR PCA PROJECT]
+        # ==============================================================================
+
         self._initialize_teacher_if_needed()
 
         if self.args.block_size < self.model.config.block_size:
@@ -499,8 +538,14 @@ class Trainer:
     def create_optimizer(self):
         optimizer_key = self.args.optimizer
 
+        # ==============================================================================
+        # [MODIFIED FOR PCA PROJECT] Filter parameters based on requires_grad
+        # ==============================================================================
+        # When LoRA is enabled, only LoRA parameters have requires_grad=True
+        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+        
         if optimizer_key == "muon":
-            named = list(self.model.named_parameters())
+            named = [(n, p) for n, p in self.model.named_parameters() if p.requires_grad]
             exclude = ("embed", "wte", "wpe", "lm_head")
             hidden = [p for n, p in named if p.ndim >= 2 and all(e not in n for e in exclude)]
             other = [p for n, p in named if not (p.ndim >= 2 and all(e not in n for e in exclude))]
@@ -510,8 +555,9 @@ class Trainer:
             ]
         else:
             param_groups = [
-                {"params": self.model.parameters(), "lr": self.args.learning_rate}
+                {"params": trainable_params, "lr": self.args.learning_rate}
             ]
+        # ==============================================================================
 
         try:
             optimizer_builder = optimizer_dictionary[optimizer_key]
@@ -1552,15 +1598,7 @@ class Trainer:
                 self.writer.add_scalar( "gamma_L" + str(layer_num), gamma, self.iter_num)
                 self.writer.add_scalar( "beta_L" + str(layer_num), beta, self.iter_num)
 
-        if self.args.wandb_log and self.master_process:
-            import wandb
-            wandb.log({
-                "iter": self.iter_num,
-                "train/loss": losses['train'],
-                "val/loss": losses['val'],
-                "lr": self.lr,
-                "mfu": running_mfu*100,
-                })
+        # NOTE: wandb.log() moved to training loop after estimate_loss() call
 
     def underscore_abbr(self, dataset_name):
         """ Transforms long dataset name to abbreviation
@@ -1748,6 +1786,19 @@ class Trainer:
                         log_message+=f", lr {self.lr:.4f}"
                         self.console.print(log_message)
                         self.log_metrics(losses, running_mfu, current_epoch, self.tokens_trained, current_dataset, better_than_chance)
+
+                    # ====================================================================
+                    # WandB logging: Log training metrics after evaluation
+                    # ====================================================================
+                    if self.args.wandb_log and self.master_process:
+                        import wandb
+                        wandb.log({
+                            "iter": self.iter_num,
+                            "train/loss": losses['train'],
+                            "val/loss": losses['val'],
+                            "lr": self.lr,
+                            "mfu": running_mfu*100,
+                        })
 
                     if math.isnan(losses["val"]):
                         # If val loss is nan, then exit.

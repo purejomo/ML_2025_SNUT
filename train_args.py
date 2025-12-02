@@ -54,6 +54,19 @@ def parse_args():
     model_group.add_argument('--export_scale_matrices_each_eval', default=False, action=argparse.BooleanOptionalAction, help="Requires --export_scale_matrices_npz is not None. If this is so, will always export to npz after evaluation")
     model_group.add_argument('--import_scale_matrices_freeze', default=False, action=argparse.BooleanOptionalAction, help="Whether to freeze scaled_matrices")
 
+    # ==============================================================================
+    # [ADDED FOR PCA PROJECT] LoRA (Low-Rank Adaptation) Arguments
+    # ==============================================================================
+    model_group.add_argument('--use_lora', default=False, action=argparse.BooleanOptionalAction, help="Enable LoRA (Low-Rank Adaptation) fine-tuning")
+    model_group.add_argument('--lora_rank', default=16, type=int, help="Rank for LoRA low-rank matrices (default: 16)")
+    model_group.add_argument('--lora_alpha', default=32, type=int, help="Alpha scaling factor for LoRA (default: 32)")
+    model_group.add_argument('--lora_dropout', default=0.0, type=float, help="Dropout rate for LoRA layers (default: 0.0)")
+    model_group.add_argument('--lora_targets', default='q_proj,k_proj,v_proj,c_proj', type=str, 
+                            help="Comma-separated list of layers to apply LoRA. Options: wte,scale_up,scale_down,q_proj,k_proj,v_proj,c_proj,mlp_up,mlp_down (default: q_proj,k_proj,v_proj,c_proj)")
+    # ==============================================================================
+    # [END OF ADDED CODE FOR PCA PROJECT]
+    # ==============================================================================
+
     # I/O args
     training_group.add_argument('--out_dir', default='out', type=str)
     training_group.add_argument('--eval_interval', default=250, type=int)

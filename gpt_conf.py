@@ -143,6 +143,18 @@ class GPTConfig:
     export_scale_matrices_npz: str = None
     export_scale_matrices_each_eval: bool = False
 
+    # ==============================================================================
+    # [ADDED FOR PCA PROJECT] LoRA Configuration
+    # ==============================================================================
+    use_lora: bool = False
+    lora_rank: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.0
+    lora_targets: str = 'q_proj,k_proj,v_proj,c_proj'
+    # ==============================================================================
+    # [END OF ADDED CODE FOR PCA PROJECT]
+    # ==============================================================================
+
     dropout: float = 0.0
     window_size: int = None
     use_flex_attn: bool = None

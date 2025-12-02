@@ -46,6 +46,261 @@ from initializations.initialization_variations import init_dictionary
 from shared_param_utils import SharedParamGroupCreator
 from variations.block_variations import Block
 
+# ==============================================================================
+# [ADDED FOR PCA-LORA PROJECT] LoRA (Low-Rank Adaptation) Implementation
+# ==============================================================================
+# LoRA adds trainable low-rank matrices to frozen pretrained weights.
+# Paper: "LoRA: Low-Rank Adaptation of Large Language Models" (Hu et al., 2021)
+# https://arxiv.org/abs/2106.09685
+# ==============================================================================
+
+class LoRALinear(nn.Module):
+    """
+    LoRA wrapper for nn.Linear layers.
+    
+    Implements: W' = W + (B @ A) * scaling
+    where W is frozen, and A, B are trainable low-rank matrices.
+    
+    Args:
+        original_linear: The original nn.Linear layer to wrap
+        rank: The rank of the low-rank matrices (default: 16)
+        alpha: Scaling factor for LoRA (default: 32)
+        dropout: Dropout rate for LoRA (default: 0.0)
+    """
+    def __init__(self, original_linear, rank=16, alpha=32, dropout=0.0):
+        super().__init__()
+        self.original_linear = original_linear
+        self.in_features = original_linear.in_features
+        self.out_features = original_linear.out_features
+        self.rank = rank
+        self.alpha = alpha
+        self.scaling = alpha / rank
+        
+        # Freeze original weights
+        self.original_linear.weight.requires_grad = False
+        if self.original_linear.bias is not None:
+            self.original_linear.bias.requires_grad = False
+        
+        # LoRA matrices: A (down-projection), B (up-projection)
+        # A: [rank, in_features], B: [out_features, rank]
+        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_features))
+        self.lora_B = nn.Parameter(torch.zeros(self.out_features, rank))
+        
+        # Initialize A with Kaiming, B with zeros (so LoRA starts as identity)
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        
+        # Dropout
+        self.lora_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        
+    def forward(self, x):
+        # Original forward pass (frozen)
+        result = self.original_linear(x)
+        
+        # LoRA forward pass: x @ A^T @ B^T * scaling
+        lora_output = self.lora_dropout(x) @ self.lora_A.T @ self.lora_B.T * self.scaling
+        
+        return result + lora_output
+    
+    def extra_repr(self):
+        return f'in_features={self.in_features}, out_features={self.out_features}, rank={self.rank}, alpha={self.alpha}'
+
+
+class LoRAEmbedding(nn.Module):
+    """
+    LoRA wrapper for nn.Embedding layers.
+    
+    Implements: E' = E + (B @ A) * scaling
+    where E is frozen embedding, and A, B are trainable low-rank matrices.
+    
+    Args:
+        original_embedding: The original nn.Embedding layer to wrap
+        rank: The rank of the low-rank matrices (default: 16)
+        alpha: Scaling factor for LoRA (default: 32)
+    """
+    def __init__(self, original_embedding, rank=16, alpha=32):
+        super().__init__()
+        self.original_embedding = original_embedding
+        self.num_embeddings = original_embedding.num_embeddings
+        self.embedding_dim = original_embedding.embedding_dim
+        self.rank = rank
+        self.alpha = alpha
+        self.scaling = alpha / rank
+        
+        # Freeze original embedding
+        self.original_embedding.weight.requires_grad = False
+        
+        # LoRA matrices for embedding
+        # A: [num_embeddings, rank], B: [rank, embedding_dim]
+        self.lora_A = nn.Parameter(torch.zeros(self.num_embeddings, rank))
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.embedding_dim))
+        
+        # Initialize A with small random values, B with zeros
+        nn.init.normal_(self.lora_A, std=0.02)
+        nn.init.zeros_(self.lora_B)
+        
+    def forward(self, x):
+        # Original embedding (frozen)
+        result = self.original_embedding(x)
+        
+        # LoRA: lookup in A, then project with B
+        lora_output = F.embedding(x, self.lora_A) @ self.lora_B * self.scaling
+        
+        return result + lora_output
+    
+    def extra_repr(self):
+        return f'num_embeddings={self.num_embeddings}, embedding_dim={self.embedding_dim}, rank={self.rank}, alpha={self.alpha}'
+
+
+def apply_lora_to_model(model, config):
+    """
+    Apply LoRA to specified layers in the model.
+    
+    Args:
+        model: The GPT model
+        config: Configuration with LoRA settings:
+            - lora_rank: Rank for LoRA matrices
+            - lora_alpha: Alpha scaling factor
+            - lora_dropout: Dropout rate
+            - lora_targets: Comma-separated list of targets
+              Options: wte, scale_up, scale_down, q_proj, k_proj, v_proj, c_proj, mlp_up, mlp_down
+    
+    Returns:
+        model: Model with LoRA applied
+        lora_params: List of LoRA parameters (for optimizer)
+    """
+    lora_rank = getattr(config, 'lora_rank', 16)
+    lora_alpha = getattr(config, 'lora_alpha', 32)
+    lora_dropout = getattr(config, 'lora_dropout', 0.0)
+    lora_targets = getattr(config, 'lora_targets', 'q_proj,k_proj,v_proj,c_proj')
+    
+    if isinstance(lora_targets, str):
+        lora_targets = [t.strip() for t in lora_targets.split(',')]
+    
+    lora_params = []
+    lora_modules = {}
+    
+    print(f"[LoRA] Applying LoRA with rank={lora_rank}, alpha={lora_alpha}, dropout={lora_dropout}")
+    print(f"[LoRA] Targets: {lora_targets}")
+    
+    # 1. Token Embedding (wte)
+    if 'wte' in lora_targets and hasattr(model.transformer, 'wte'):
+        original_wte = model.transformer.wte
+        lora_wte = LoRAEmbedding(original_wte, rank=lora_rank, alpha=lora_alpha)
+        model.transformer.wte = lora_wte
+        lora_params.extend([lora_wte.lora_A, lora_wte.lora_B])
+        lora_modules['wte'] = lora_wte
+        print(f"[LoRA] Applied to wte: {original_wte.num_embeddings}x{original_wte.embedding_dim}")
+    
+    # 2. Scale matrices (for factorized embeddings)
+    if 'scale_up' in lora_targets and hasattr(model.transformer, 'scale_up'):
+        original_scale_up = model.transformer.scale_up
+        lora_scale_up = LoRALinear(original_scale_up, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+        model.transformer.scale_up = lora_scale_up
+        lora_params.extend([lora_scale_up.lora_A, lora_scale_up.lora_B])
+        lora_modules['scale_up'] = lora_scale_up
+        print(f"[LoRA] Applied to scale_up: {original_scale_up.in_features}x{original_scale_up.out_features}")
+    
+    if 'scale_down' in lora_targets and hasattr(model.transformer, 'scale_down'):
+        original_scale_down = model.transformer.scale_down
+        lora_scale_down = LoRALinear(original_scale_down, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+        model.transformer.scale_down = lora_scale_down
+        lora_params.extend([lora_scale_down.lora_A, lora_scale_down.lora_B])
+        lora_modules['scale_down'] = lora_scale_down
+        print(f"[LoRA] Applied to scale_down: {original_scale_down.in_features}x{original_scale_down.out_features}")
+    
+    # 3. Attention and MLP layers (for each transformer block)
+    for layer_idx, block in enumerate(model.transformer.h):
+        # Attention projections
+        attn = block.attn
+        
+        if 'q_proj' in lora_targets and hasattr(attn, 'c_attn_q'):
+            original = attn.c_attn_q
+            lora_layer = LoRALinear(original, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            attn.c_attn_q = lora_layer
+            lora_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+            if layer_idx == 0:
+                print(f"[LoRA] Applied to q_proj in all layers")
+        
+        if 'k_proj' in lora_targets and hasattr(attn, 'c_attn_k'):
+            original = attn.c_attn_k
+            lora_layer = LoRALinear(original, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            attn.c_attn_k = lora_layer
+            lora_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+            if layer_idx == 0:
+                print(f"[LoRA] Applied to k_proj in all layers")
+        
+        if 'v_proj' in lora_targets and hasattr(attn, 'c_attn_v'):
+            original = attn.c_attn_v
+            lora_layer = LoRALinear(original, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            attn.c_attn_v = lora_layer
+            lora_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+            if layer_idx == 0:
+                print(f"[LoRA] Applied to v_proj in all layers")
+        
+        if 'c_proj' in lora_targets and hasattr(attn, 'c_proj'):
+            original = attn.c_proj
+            lora_layer = LoRALinear(original, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            attn.c_proj = lora_layer
+            lora_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+            if layer_idx == 0:
+                print(f"[LoRA] Applied to c_proj (attention output) in all layers")
+        
+        # MLP projections
+        mlp = block.mlp
+        
+        if 'mlp_up' in lora_targets and hasattr(mlp, 'c_fc'):
+            original = mlp.c_fc
+            lora_layer = LoRALinear(original, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            mlp.c_fc = lora_layer
+            lora_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+            if layer_idx == 0:
+                print(f"[LoRA] Applied to mlp_up (c_fc) in all layers")
+        
+        if 'mlp_down' in lora_targets and hasattr(mlp, 'c_proj'):
+            original = mlp.c_proj
+            lora_layer = LoRALinear(original, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            mlp.c_proj = lora_layer
+            lora_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+            if layer_idx == 0:
+                print(f"[LoRA] Applied to mlp_down (c_proj) in all layers")
+    
+    # Count LoRA parameters
+    total_lora_params = sum(p.numel() for p in lora_params)
+    total_model_params = sum(p.numel() for p in model.parameters())
+    print(f"[LoRA] Total LoRA parameters: {total_lora_params:,} ({100*total_lora_params/total_model_params:.2f}% of model)")
+    
+    return model, lora_params, lora_modules
+
+
+def get_lora_state_dict(model):
+    """
+    Extract only LoRA parameters from model state dict.
+    Useful for saving LoRA weights separately.
+    """
+    lora_state_dict = {}
+    for name, param in model.named_parameters():
+        if 'lora_A' in name or 'lora_B' in name:
+            lora_state_dict[name] = param.data
+    return lora_state_dict
+
+
+def load_lora_state_dict(model, lora_state_dict):
+    """
+    Load LoRA parameters into model.
+    """
+    model_state = model.state_dict()
+    for name, param in lora_state_dict.items():
+        if name in model_state:
+            model_state[name] = param
+    model.load_state_dict(model_state, strict=False)
+    return model
+
+# ==============================================================================
+# [END OF ADDED CODE FOR PCA-LORA PROJECT]
+# ==============================================================================
+
+
 class LearnedPositionEmbedding(nn.Module):
     """
     Learns a position-aware residual using the same Block modules (transformer.h)

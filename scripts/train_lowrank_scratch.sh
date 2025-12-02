@@ -1,26 +1,27 @@
 #!/bin/bash
 # ==============================================================================
-# PCA-Compressed GPT-2 Training Script (Frozen Embeddings)
+# Experiments 2-5: Low-rank Scratch Training
 # ==============================================================================
 #
-# This script trains a GPT-2 model with FROZEN PCA-factorized embeddings.
-# Only the transformer layers are trained; embeddings and scale matrices
-# are kept fixed from the PCA initialization.
-#
-# This is useful for:
-# - Faster training (fewer parameters to update)
-# - Testing how well PCA captures the essential embedding structure
-# - Comparison with full fine-tuning
+# Train a GPT model with randomly initialized low-rank factorized embeddings.
+# This measures the cost of dimensionality reduction without PCA initialization.
 #
 # Usage:
-#   bash scripts/train_pca_compressed_frozen.sh <rank_k>
+#   bash scripts/train_lowrank_scratch.sh <rank_k>
+#
+# Examples:
+#   bash scripts/train_lowrank_scratch.sh 64
+#   bash scripts/train_lowrank_scratch.sh 128
+#   bash scripts/train_lowrank_scratch.sh 256
+#   bash scripts/train_lowrank_scratch.sh 512
 #
 # ==============================================================================
 
 set -e
 
 if [ -z "$1" ]; then
-    echo "Usage: bash scripts/train_pca_compressed_frozen.sh <rank_k>"
+    echo "Usage: bash scripts/train_lowrank_scratch.sh <rank_k>"
+    echo "Available ranks: 64, 128, 256, 512"
     exit 1
 fi
 
@@ -30,21 +31,22 @@ PROJECT_DIR="/home/ghlee/ML_2025_SNUT"
 cd "$PROJECT_DIR"
 
 DATA_DIR="/home/ghlee/nanoGPT/data/wikitext103"
-WTE_NPY="model_weights/pca_factorized/wte_pca_k${RANK_K}.npy"
-SCALE_NPZ="model_weights/pca_factorized/scale_mats_pca_k${RANK_K}.npz"
-OUT_DIR="model_weights/gpt_pca_k${RANK_K}_frozen"
-
-if [ ! -f "$WTE_NPY" ] || [ ! -f "$SCALE_NPZ" ]; then
-    echo "Error: Factorized files not found. Run: bash scripts/run_pca_factorization.sh"
-    exit 1
-fi
+OUT_DIR="model_weights/gpt_lowrank_scratch_k${RANK_K}"
 
 mkdir -p "$OUT_DIR"
 
 echo "=============================================="
-echo "Training PCA-Compressed GPT-2 (FROZEN Embeddings)"
+echo "Experiment: Low-rank Scratch (k=$RANK_K)"
 echo "=============================================="
-echo "n_embd_wte: $RANK_K (FROZEN)"
+echo "Config:"
+echo "  vocab_size: 50257"
+echo "  n_embd: 768"
+echo "  n_embd_wte: $RANK_K (random init)"
+echo "  n_head: 12"
+echo "  n_layer: 12"
+echo ""
+echo "Training: Full training from scratch"
+echo "Output: $OUT_DIR"
 echo "=============================================="
 
 python train.py \
@@ -57,11 +59,6 @@ python train.py \
     --n_embd_wte "$RANK_K" \
     --block_size 2048 \
     \
-    --import_wte_npy "$WTE_NPY" \
-    --import_wte_freeze \
-    --import_scale_matrices_npz "$SCALE_NPZ" \
-    --import_scale_matrices_freeze \
-    \
     --dropout 0.1 \
     --activation_variant gelu \
     --norm_variant_attn layernorm \
@@ -72,7 +69,7 @@ python train.py \
     --no-use_rotary_embeddings \
     \
     --batch_size 4 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 4 \
     \
     --max_iters 10000 \
     --eval_interval 500 \
@@ -98,10 +95,12 @@ python train.py \
     \
     --wandb_log \
     --wandb_project "new-small-gpt" \
-    --wandb_run_name "gpt-pca-k${RANK_K}-frozen"
+    --wandb_run_name "lowrank-scratch-k${RANK_K}"
 
 echo ""
 echo "=============================================="
-echo "Training Complete! (Frozen Embeddings)"
+echo "Low-rank Scratch (k=$RANK_K) Complete!"
+echo "=============================================="
+echo "Checkpoint: $OUT_DIR/ckpt.pt"
 echo "=============================================="
 
