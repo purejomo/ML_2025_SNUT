@@ -65,9 +65,9 @@ We compare multiple training strategies to understand:
 
 ### Rank Configurations
 
-- **64**: ~11.7x compression ratio
-- **128**: ~5.8x compression ratio
-- **256**: ~2.9x compression ratio
+- **64**: ~11.8x compression ratio
+- **128**: ~5.9x compression ratio
+- **256**: ~3.0x compression ratio
 - **512**: ~1.5x compression ratio
 
 ## Installation
@@ -181,11 +181,11 @@ python util_factorization/pca_factorize_wte.py \
 
 | Model | Embedding Params | Compression Ratio |
 |-------|------------------|-------------------|
-| Baseline (768d) | 38.6M | 1.0x |
-| Rank 512 | 25.9M | 1.5x |
-| Rank 256 | 13.3M | 2.9x |
-| Rank 128 | 6.6M | **5.8x** |
-| Rank 64 | 3.3M | **11.7x** |
+| Baseline (768d) | 38.60M | 1.0x |
+| Rank 512 | 26.13M | 1.5x |
+| Rank 256 | 13.06M | 3.0x |
+| Rank 128 | 6.53M | **5.9x** |
+| Rank 64 | 3.27M | **11.8x** |
 
 ## Results and Monitoring
 
