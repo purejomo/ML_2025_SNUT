@@ -99,16 +99,10 @@ python train.py \
     --eval_iters 100 \
     \
     --device cuda \
-    --dtype float16 \
-    \
-    --wandb_log \
-    --wandb_project "new-small-gpt" \
-    --wandb_run_name "pca-nofinetune-k${RANK_K}"
+    --dtype float16
 
 echo ""
 echo "=============================================="
 echo "PCA No Finetune (k=$RANK_K) Evaluation Complete!"
-echo "=============================================="
-echo "Results logged to W&B: pca-nofinetune-k${RANK_K}"
 echo "=============================================="
 

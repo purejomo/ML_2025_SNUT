@@ -75,8 +75,8 @@ python train.py \
     --eval_interval 500 \
     --eval_iters 100 \
     \
-    --learning_rate 3e-4 \
-    --min_lr 3e-5 \
+    --learning_rate 1e-4 \
+    --min_lr 5e-6 \
     --decay_lr \
     --warmup_iters 500 \
     --lr_decay_iters 10000 \

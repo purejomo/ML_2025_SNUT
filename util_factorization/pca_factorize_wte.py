@@ -3,16 +3,23 @@
 PCA/SVD-based factorization of token embeddings from a trained checkpoint.
 
 This script extracts the token embedding matrix from a trained GPT checkpoint,
-performs SVD-based low-rank factorization, and saves the factorized matrices
-for use in a compressed model.
+performs SVD-based low-rank factorization (which is equivalent to PCA), and saves
+the factorized matrices for use in a compressed model.
+
+Note on PCA vs SVD:
+- PCA finds principal components via eigendecomposition of covariance matrix W^T @ W
+- SVD directly decomposes W = U @ diag(S) @ Vh
+- The right singular vectors (Vh) from SVD are the principal components from PCA
+- Using SVD is more efficient and numerically stable than computing the covariance matrix
+- Therefore, this implementation uses SVD to compute PCA
 
 Workflow:
 1. Load a baseline checkpoint (e.g., out/baseline/ckpt.pt)
 2. Extract the token embedding weight (transformer.wte.weight)
-3. Perform SVD: W ≈ U_k @ diag(S_k) @ Vh_k
+3. Perform SVD (equivalent to PCA): W ≈ U_k @ diag(S_k) @ Vh_k
 4. Save:
    - Small embedding: W_small = U_k @ diag(S_k)  [vocab_size, k]
-   - Scale-up matrix: scale_up = Vh_k            [k, n_embd]
+   - Scale-up matrix: scale_up = Vh_k            [k, n_embd] (principal components)
 
 Example usage:
     python util_factorization/pca_factorize_wte.py \
@@ -88,22 +95,33 @@ def svd_factorize(wte: torch.Tensor, rank_k: int) -> tuple:
     """
     Perform SVD-based factorization of the token embedding matrix.
     
+    This function uses SVD to compute PCA (Principal Component Analysis).
+    SVD and PCA are mathematically equivalent for this purpose:
+    - PCA: Find principal components by eigendecomposition of covariance matrix W^T @ W
+    - SVD: Directly decompose W = U @ diag(S) @ Vh
+    - The right singular vectors (Vh) are the principal components
+    - Using SVD is more efficient and numerically stable than computing covariance matrix
+    
     Given W of shape [V, d], compute:
         W ≈ U_k @ diag(S_k) @ Vh_k
     
     where:
-        - U_k: [V, k] - left singular vectors (truncated)
-        - S_k: [k]    - singular values (truncated)
-        - Vh_k: [k, d] - right singular vectors (truncated)
+        - U_k: [V, k] - left singular vectors (truncated) = data projected onto PC space
+        - S_k: [k]    - singular values (truncated) = sqrt of eigenvalues
+        - Vh_k: [k, d] - right singular vectors (truncated) = principal components
     
     Returns:
         W_small: [V, k] = U_k @ diag(S_k) - the factorized small embedding
-        scale_up: [k, d] = Vh_k - the projection matrix
+        scale_up: [k, d] = Vh_k - the projection matrix (principal components)
         explained_variance_ratio: float - fraction of variance explained
     """
     print(f"Performing SVD on embedding matrix of shape {tuple(wte.shape)}...")
+    print("Note: SVD is used to compute PCA (Principal Component Analysis).")
+    print("      The right singular vectors (Vh) are the principal components.")
     
     # Perform full SVD
+    # This is equivalent to PCA: W^T @ W = Vh^T @ diag(S^2) @ Vh
+    # where Vh contains the principal components (eigenvectors of covariance)
     # U: [V, min(V,d)], S: [min(V,d)], Vh: [min(V,d), d]
     U, S, Vh = torch.linalg.svd(wte, full_matrices=False)
     
@@ -115,14 +133,18 @@ def svd_factorize(wte: torch.Tensor, rank_k: int) -> tuple:
     Vh_k = Vh[:rank_k, :]    # [k, d]
     
     # Compute explained variance ratio
+    # In PCA/SVD, variance explained by each component = squared singular value
+    # Total variance = sum of all squared singular values
     total_variance = (S ** 2).sum()
     explained_variance = (S_k ** 2).sum()
     explained_variance_ratio = (explained_variance / total_variance).item()
     
     # Create the factorized embedding: W_small = U_k @ diag(S_k)
+    # This represents the original data projected onto the k-dimensional PC space
     W_small = U_k @ torch.diag(S_k)  # [V, k]
     
-    # scale_up matrix is Vh_k
+    # scale_up matrix is Vh_k (the principal components)
+    # This projects from k-dimensional PC space back to original d-dimensional space
     scale_up = Vh_k  # [k, d]
     
     return W_small, scale_up, explained_variance_ratio, S

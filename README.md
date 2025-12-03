@@ -95,13 +95,6 @@ data/wikitext103/
 
 ## Quick Start
 
-### Run All 13 Experiments
-
-```bash
-# Run all experiments for all ranks (64, 128, 256, 512)
-bash scripts/run_all_experiments.sh
-```
-
 ### Individual Experiments
 
 ```bash
@@ -141,7 +134,6 @@ bash scripts/train_pca_lora.sh 512
 | `train_lowrank_scratch.sh` | Low-rank scratch training |
 | `eval_pca_no_finetune.sh` | Evaluate PCA without fine-tuning |
 | `train_pca_lora.sh` | PCA + LoRA fine-tuning |
-| `run_all_experiments.sh` | Run all 13 experiments |
 
 ### Key Files
 

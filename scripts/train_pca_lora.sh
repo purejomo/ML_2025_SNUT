@@ -40,8 +40,8 @@ SCALE_NPZ="model_weights/pca_factorized/scale_mats_pca_k${RANK_K}.npz"
 OUT_DIR="model_weights/gpt_pca_lora_k${RANK_K}"
 
 # LoRA hyperparameters
-LORA_RANK=16
-LORA_ALPHA=32
+LORA_RANK=32
+LORA_ALPHA=64
 LORA_DROPOUT=0.1
 
 # Check files exist
@@ -111,15 +111,15 @@ python train.py \
     --batch_size 4 \
     --gradient_accumulation_steps 4 \
     \
-    --max_iters 2000 \
+    --max_iters 5000 \
     --eval_interval 200 \
     --eval_iters 100 \
     \
-    --learning_rate 1e-4 \
-    --min_lr 1e-5 \
+    --learning_rate 5e-5 \
+    --min_lr 1e-6 \
     --decay_lr \
     --warmup_iters 100 \
-    --lr_decay_iters 2000 \
+    --lr_decay_iters 5000 \
     \
     --optimizer adamw \
     --weight_decay 0.01 \
@@ -133,7 +133,7 @@ python train.py \
     \
     --wandb_log \
     --wandb_project "new-small-gpt" \
-    --wandb_run_name "pca-lora-k${RANK_K}"
+    --wandb_run_name "pca-lora-k${RANK_K}-r${LORA_RANK}"
 
 echo ""
 echo "=============================================="

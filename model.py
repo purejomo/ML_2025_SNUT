@@ -104,6 +104,16 @@ class LoRALinear(nn.Module):
     
     def extra_repr(self):
         return f'in_features={self.in_features}, out_features={self.out_features}, rank={self.rank}, alpha={self.alpha}'
+    
+    @property
+    def weight(self):
+        """Expose original linear's weight for compatibility."""
+        return self.original_linear.weight
+    
+    @property
+    def bias(self):
+        """Expose original linear's bias for compatibility."""
+        return self.original_linear.bias
 
 
 class LoRAEmbedding(nn.Module):

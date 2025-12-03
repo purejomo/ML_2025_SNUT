@@ -2169,29 +2169,20 @@ class Trainer:
                 # End of training actions
                 if self.iter_num > self.args.max_iters:
                     print(self.best_val_loss, self.best_iter, self.best_tokens)
-                    # Always save checkpoint at the end of training if not disabled
-                    if not self.args.never_save_checkpoint:
-                        if self.args.only_save_checkpoint_at_end:
-                            # If only saving at end, save now
+                    if self.args.only_save_checkpoint_at_end:
+                        if not self.args.never_save_checkpoint:
                             self.save_checkpoint('ckpt.pt')
                             print(f"Saved checkpoint to {self.args.out_dir}")
-                        else:
-                            # If saving during training, also save at end to ensure final state is saved
-                            self.save_checkpoint('ckpt.pt')
-                            print(f"Saved final checkpoint to {self.args.out_dir}")
 
-                    # Sample if set
-                    if self.args.max_sample_tokens:
-                        live.stop()
-                        self.sample_and_print()
-                        live.start()
+                        # Sample if set
+                        if self.args.max_sample_tokens:
+                            live.stop()
+                            self.sample_and_print()
+                            live.start()
                     break
-            if self.args.plot_statistics:
-                if hasattr(self, 'stats') and self.stats is not None:
-                    plot_statistics(self.args, self.stats, graph_y_labels)
-                else:
-                    print("Warning: plot_statistics requested but stats not available. Set --create_statistics to enable.")
 
+            if self.args.plot_statistics:
+                plot_statistics(self.args, self.stats, graph_y_labels)
 
             if self.args.tensorboard_log:
                 self.writer.flush()
