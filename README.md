@@ -63,12 +63,6 @@ We compare multiple training strategies to understand:
 | **PCA+LoRA vs PCA** | How much does LoRA fine-tuning improve PCA-compressed models? |
 | **PCA+LoRA vs Baseline** | Can PCA+LoRA achieve baseline performance with fewer parameters? |
 
-### Rank Configurations
-
-- **64**: ~11.8x compression ratio
-- **128**: ~5.9x compression ratio
-- **256**: ~3.0x compression ratio
-- **512**: ~1.5x compression ratio
 
 ## Installation
 
@@ -228,7 +222,3 @@ model_weights/
 ```
 
 Note: Experiments 6-9 (PCA no finetune) are evaluation-only and don't save checkpoints.
-
-## License
-
-[Add your license information here]
